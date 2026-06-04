@@ -14,7 +14,7 @@ spring:
           issuer-uri: http://localhost:8080/realms/facoffee
 
   datasource:
-    url: jdbc:sqlite:src/main/resources/persistence/financePersistence.db
+    url: jdbc:sqlite:src/main/resources/config/financePersistence.db
     driver-class-name: org.sqlite.JDBC
     username: facoffee
     password: facoffee
