@@ -24,7 +24,7 @@ public class PendencyService {
 
         PendencyPayloadDTO payload = event.payload();
 
-        if(repository.existsByIdEvent(event.eventId())) {
+        if(repository.existsByEventId(event.eventId())) {
             log.warn("Pendency with event ID {} already processed. Skipping.", event.eventId());
             return;
         }
@@ -39,6 +39,7 @@ public class PendencyService {
         pendency.setAmount(payload.amount());
         pendency.setChargeSource(payload.source());
         pendency.setChargeSourceId(payload.sourceId());
+        pendency.setEventId(event.eventId());
 
         repository.save(pendency);
         log.info("Pendency created for user ID {} at cycle ({}) with success!", pendency.getUserId(), pendency.getCycle());
