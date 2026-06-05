@@ -29,6 +29,7 @@ public class PaymentProof {
     @Column(name = "submitted_at", nullable = false)
     private LocalDateTime submittedAt;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProofStatus status;
 
