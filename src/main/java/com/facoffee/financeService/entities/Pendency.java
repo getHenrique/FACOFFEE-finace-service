@@ -41,6 +41,9 @@ public class Pendency {
     @OneToMany(mappedBy = "pendency", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PaymentProof> proofs = new ArrayList<>();
 
+    @Column(nullable = false)
+    private String eventId;
+
     public Pendency() {
         this.status = PendencyStatus.PENDING;
         this.createdAt = LocalDateTime.now();
@@ -59,11 +62,13 @@ public class Pendency {
     public void setStatus(PendencyStatus status) { this.status = status; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    public String getOriginEvent() { return chargeSource; }
-    public void setOriginEvent(String chargeSource) { this.chargeSource = chargeSource; }
-    public String getIdEvent() { return chargeSourceId; }
-    public void setIdEvent(String chargeSourceId) { this.chargeSourceId = chargeSourceId; }
+    public String setChargeSource() { return chargeSource; }
+    public void setChargeSource(String chargeSource) { this.chargeSource = chargeSource; }
+    public String setChargeSourceId() { return chargeSourceId; }
+    public void setChargeSourceId(String chargeSourceId) { this.chargeSourceId = chargeSourceId; }
     public List<PaymentProof> getProofs() { return proofs; }
+    public void setEventId(String eventId) { this.eventId = eventId; }
+    public String getEventId() { return eventId; }
 
 
 }
