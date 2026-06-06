@@ -3,6 +3,7 @@ package com.facoffee.financeService.entities;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,17 +33,20 @@ public class Pendency {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "charge_source")
+    @Column(name = "charge_source", nullable = false)
     private String chargeSource;
 
-    @Column(name = "charge_source_id")
+    @Column(name = "charge_source_id",  nullable = false)
     private String chargeSourceId;
 
     @OneToMany(mappedBy = "pendency", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PaymentProof> proofs = new ArrayList<>();
 
-    @Column(nullable = false)
+    @Column(name = "event_id", nullable = false)
     private String eventId;
+
+    @Column(name = "due_to", nullable = false)
+    private LocalDate dueTo;
 
     public Pendency() {
         this.status = PendencyStatus.PENDING;
@@ -69,6 +73,7 @@ public class Pendency {
     public List<PaymentProof> getProofs() { return proofs; }
     public void setEventId(String eventId) { this.eventId = eventId; }
     public String getEventId() { return eventId; }
-
+    public LocalDate getDueTo() { return dueTo; }
+    public void setDueTo(LocalDate dueTo) { this.dueTo = dueTo; }
 
 }
