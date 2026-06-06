@@ -73,6 +73,8 @@ public class Pendency {
     public List<PaymentProof> getProofs() { return proofs; }
     public void setEventId(String eventId) { this.eventId = eventId; }
     public String getEventId() { return eventId; }
+    public LocalDate getDueTo() { return dueTo; }
+    public void setDueTo(LocalDate dueTo) { this.dueTo = dueTo; }
 
 
 }
