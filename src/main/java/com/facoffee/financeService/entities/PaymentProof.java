@@ -23,9 +23,6 @@ public class PaymentProof {
     @Column(nullable = false)
     private BigDecimal amount;
 
-    @Column(name = "rejection_text")
-    private String rejectionText;
-
     @Column(name = "submitted_at", nullable = false)
     private LocalDateTime submittedAt;
 
@@ -47,8 +44,6 @@ public class PaymentProof {
     public void setAttachmentFilePath(String attachmentFilePath) { this.attachmentFilePath = attachmentFilePath; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
-    public String getRejectionText() { return rejectionText; }
-    public void setRejectionText(String rejectionText) { this.rejectionText = rejectionText; }
     public LocalDateTime getSubmittedAt() { return submittedAt; }
     public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
     public ProofStatus getStatus() { return status; }

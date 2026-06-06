@@ -76,5 +76,4 @@ public class Pendency {
     public LocalDate getDueTo() { return dueTo; }
     public void setDueTo(LocalDate dueTo) { this.dueTo = dueTo; }
 
-
 }
