@@ -69,15 +69,37 @@ python3 facoffee-docs/scripts/publish_test_messages.py
 > edite o payload do script com outro `userId` ou `cycle`.
 
 ### 5. Pegar token e testar
+**Você precisa dos dois tokens** — cada papel acessa rotas diferentes. É o mesmo
+endpoint do Keycloak; só muda `username`/`password` (e, por consequência, a role
+no token, que é o que o `@PreAuthorize` lê).
 ```bash
-# MANAGER:
+# MANAGER (facoffee@facom.ufms.br) — valida/rejeita comprovante (PATCH), consultas:
 curl -s -X POST http://localhost:8080/realms/facoffee/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=password&client_id=facoffee-public&username=facoffee@facom.ufms.br&password=facoffee" \
   | jq -r .access_token
+
+# PARTICIPANT (participant@facom.ufms.br) — envia (POST) e remove (DELETE) comprovante:
+curl -s -X POST http://localhost:8080/realms/facoffee/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password&client_id=facoffee-public&username=participant@facom.ufms.br&password=participant" \
+  | jq -r .access_token
 ```
 Swagger: `http://localhost:3003/api/finance/swagger-ui.html` -> **Authorize**
 (cole só o token, sem `Bearer`) -> testar os endpoints.
+
+> **Qual token usar em cada rota** (usar o errado dá `403`):
+>
+> | Operação | Papel exigido |
+> |----------|---------------|
+> | `POST .../proofs` (enviar) | **PARTICIPANT** |
+> | `DELETE .../proofs/{id}` (remover, enquanto `WAITING_VALIDATION`) | **PARTICIPANT dono** ou MANAGER |
+> | `PATCH .../proofs/{id}` (validar/rejeitar) | **MANAGER** |
+> | `GET` (listar/consultar pendências e comprovantes) | qualquer autenticado |
+>
+> A regra vem do contrato (`api-docs.yaml`, `x-authorization`): o participante
+> **envia** o próprio comprovante e o gestor **valida** — papéis separados de
+> propósito (auditoria), por isso o MANAGER não envia comprovante.
 
 ---
 
