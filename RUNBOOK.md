@@ -90,6 +90,162 @@ JAVA_HOME=/home/gabriel/.jdks/openjdk-26 ./mvnw spring-boot:run
 
 ---
 
+## Casos de teste pelo Swagger
+
+Cada endpoint traz **Entrada** (corpo a enviar) e **Saída esperada** (status +
+corpo), além de uma tabela de **erros possíveis**. Sempre os dois cenários de
+auth: **autenticado** (clique *Authorize* e cole o token) e **não autenticado**
+(sem token). Caminhos relativos ao context-path `/api/finance`.
+
+> **Sobre o `id` da pendência:** a pendência **não** nasce com o id do evento
+> (`pend_001`). O listener gera o id automaticamente — com o banco recém-resetado
+> e um único evento publicado, ela fica com **`id: "1"`**. Confirme o id real em
+> `GET /pendencies` antes dos testes e troque `1` pelo que aparecer. O `id` do
+> comprovante também é gerado (idem, começa em `1`).
+>
+> **Formato de erro:** respostas `4xx` de negócio (`400/403/404/409`) vêm como
+> `ErrorResponse` → `{ "timestamp", "status", "error", "message", "path" }`. Já o
+> `401` é tratado pelo Spring Security e vem **sem corpo**.
+
+### 1. `GET /health`  · público
+
+- **Entrada:** nenhuma.
+- **Saída esperada (autenticado ou não):** `200 OK`
+  ```json
+  { "status": "UP", "service": "FACOFFEE-Finance", "message": "I'm alive!" }
+  ```
+- **Erros possíveis:** nenhum (rota livre).
+
+### 2. `GET /pendencies`  · autenticado (qualquer role)
+
+- **Entrada:** nenhuma. Filtros opcionais via query: `userId`, `cycle`,
+  `status` (`PENDING`/`PAID`/`OVERDUE`), `page`, `size`.
+- **Saída esperada (autenticado):** `200 OK`
+  ```json
+  {
+    "items": [
+      { "id": "1", "source": "MONTHLY_PARTICIPATION", "sourceId": "mpart_001",
+        "userId": "usr_123", "cycle": "2026-05", "amount": 40.0, "status": "PENDING" }
+    ],
+    "page": { "page": 0, "size": 20, "totalItems": 1, "totalPages": 1 }
+  }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Filtro sem resultado (ex.: `?status=PAID`) | `200`, `items: []`, `totalItems: 0` |
+
+### 3. `GET /pendencies/1`  · autenticado
+
+- **Entrada:** nenhuma.
+- **Saída esperada (autenticado):** `200 OK`
+  ```json
+  { "id": "1", "source": "MONTHLY_PARTICIPATION", "sourceId": "mpart_001",
+    "userId": "usr_123", "cycle": "2026-05", "amount": 40.0, "status": "PENDING" }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| `id` inexistente (`GET /pendencies/999`) | `404` (sem corpo) |
+
+### 4. `POST /pendencies/1/proofs`  · **só PARTICIPANT**
+
+- **Entrada:**
+  ```json
+  {
+    "submittedBy": "participant@facom.ufms.br",
+    "amount": 40.0,
+    "paymentDate": "2026-06-10",
+    "method": "PIX",
+    "receiptUrl": "https://exemplo.com/comprovantes/1.png",
+    "note": "Pagamento referente ao ciclo 2026-05"
+  }
+  ```
+  `method` ∈ `PIX`, `CASH`, `BANK_TRANSFER`, `OTHER`. `note` é opcional.
+- **Saída esperada (token PARTICIPANT):** `201 Created`
+  ```json
+  { "id": "1", "pendencyId": "1", "userId": "participant@facom.ufms.br",
+    "amount": 40.0, "paymentDate": "2026-06-10", "method": "PIX",
+    "status": "WAITING_VALIDATION", "submittedAt": "...", "validatedAt": null }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Token **MANAGER** (rota é só PARTICIPANT) | `403` `ErrorResponse` |
+| Pendência inexistente (`/pendencies/999/proofs`) | `404` `ErrorResponse` |
+| Falta campo obrigatório (`submittedBy`/`amount`/`paymentDate`/`method`/`receiptUrl`) | `400` `ErrorResponse` |
+| Já existe comprovante em `WAITING_VALIDATION`, ou pendência já `PAID` | `409` `ErrorResponse` |
+
+### 5. `GET /pendencies/1/proofs`  · autenticado
+
+- **Entrada:** nenhuma. Filtro opcional: `?status=WAITING_VALIDATION` (ou
+  `VALIDATED`/`REJECTED`), `page`, `size`.
+- **Saída esperada (autenticado):** `200 OK` — note `totalElements` (não `totalItems`):
+  ```json
+  {
+    "items": [
+      { "id": "1", "pendencyId": "1", "userId": "participant@facom.ufms.br",
+        "amount": 40.0, "method": "PIX", "status": "WAITING_VALIDATION" }
+    ],
+    "page": { "page": 0, "size": 20, "totalElements": 1, "totalPages": 1 }
+  }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Pendência inexistente | `404` `ErrorResponse` |
+| Filtro sem resultado (ex.: `?status=VALIDATED` antes de validar) | `200`, `items: []`, `totalElements: 0` |
+
+### 6. `PATCH /pendencies/1/proofs/1`  · **só MANAGER**
+
+Use o `id` do comprovante (passo 4). Só decide se ele estiver em
+`WAITING_VALIDATION`.
+
+- **Entrada — validar:**
+  ```json
+  { "status": "VALIDATED", "decidedBy": "facoffee@facom.ufms.br" }
+  ```
+- **Entrada — rejeitar** (`reason` obrigatório):
+  ```json
+  { "status": "REJECTED", "decidedBy": "facoffee@facom.ufms.br", "reason": "Comprovante ilegível" }
+  ```
+- **Saída esperada (token MANAGER, validar):** `200 OK` — comprovante vira
+  `VALIDATED` e a **pendência vira `PAID`**:
+  ```json
+  { "id": "1", "status": "VALIDATED", "validatedBy": "facoffee@facom.ufms.br", "validatedAt": "..." }
+  ```
+  Ao rejeitar, o comprovante vira `REJECTED` e a **pendência volta a `PENDING`**.
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Token PARTICIPANT | `403` `ErrorResponse` |
+| Pendência ou comprovante inexistente | `404` `ErrorResponse` |
+| Comprovante não está em `WAITING_VALIDATION` (já decidido) | `409` `ErrorResponse` |
+| Falta `decidedBy` | `400` `ErrorResponse` |
+| `status` ≠ `VALIDATED`/`REJECTED` | `400` `ErrorResponse` |
+| `REJECTED` sem `reason` | `400` `ErrorResponse` |
+
+### 7. `DELETE /pendencies/1/proofs/1`  · **MANAGER ou dono**
+
+Só remove enquanto estiver em `WAITING_VALIDATION`.
+
+- **Entrada:** nenhuma.
+- **Saída esperada (MANAGER ou dono do comprovante):** `204 No Content` (sem corpo).
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| PARTICIPANT que **não** é o dono | `403` `ErrorResponse` |
+| Pendência ou comprovante inexistente | `404` `ErrorResponse` |
+| Comprovante já decidido (`VALIDATED`/`REJECTED`) | `409` `ErrorResponse` |
+
+---
+
 ## Usuários de teste (Keycloak)
 
 | Papel | Usuário | Senha |
