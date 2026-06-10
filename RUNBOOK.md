@@ -63,6 +63,10 @@ Pendências nascem de evento, não de REST:
 pip install pika   # só na primeira vez
 python3 facoffee-docs/scripts/publish_test_messages.py
 ```
+> **Idempotente por `userId` + `cycle`:** rodar o script várias vezes **não** cria
+> pendências novas (`id` continua `1`). A app pula duplicatas de mesmo
+> `userId`/`cycle` (no script, `usr_123` / `2026-05`). Para gerar `id: "2"`, `3`…
+> edite o payload do script com outro `userId` ou `cycle`.
 
 ### 5. Pegar token e testar
 ```bash
@@ -78,15 +82,39 @@ Swagger: `http://localhost:3003/api/finance/swagger-ui.html` -> **Authorize**
 ---
 
 ## Bloco único — reset completo (copia e cola)
+
+Faz tudo: infra (1) → reset do DB (2) → sobe o app (3) → **cria a pendência de
+teste (4)** → **imprime o token MANAGER (5)**. O app sobe em segundo plano e o
+script espera o `health` responder antes de publicar o evento — assim os passos 4
+e 5 não rodam antes da hora (era o que faltava: sem o passo 4 o banco fica vazio
+e os testes dão `404`).
+
 ```bash
-# a partir da raiz do repositório
+# a partir da raiz do repositório — copia e cola tudo de uma vez
 ( cd facoffee-docs && docker compose up -d rabbitmq keycloak )
 sleep 25
 kill $(ss -ltnp 2>/dev/null | grep ':3003' | grep -oP 'pid=\K[0-9]+') 2>/dev/null
 rm -f src/main/resources/persistence/financePersistence.db
 chmod +x mvnw
-JAVA_HOME=/home/gabriel/.jdks/openjdk-26 ./mvnw spring-boot:run
+
+# (3) sobe o app em segundo plano e espera o health virar 200
+JAVA_HOME=/home/gabriel/.jdks/openjdk-26 ./mvnw spring-boot:run > /tmp/finance-app.log 2>&1 &
+until [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3003/api/finance/health)" = "200" ]; do sleep 2; done
+echo "app UP"
+
+# (4) cria a pendência de teste via RabbitMQ (pendências nascem de evento, não de REST)
+pip install pika   # só na primeira vez
+python3 facoffee-docs/scripts/publish_test_messages.py
+
+# (5) imprime o token MANAGER — copie e cole no Swagger (Authorize, sem "Bearer")
+curl -s -X POST http://localhost:8080/realms/facoffee/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password&client_id=facoffee-public&username=facoffee@facom.ufms.br&password=facoffee" \
+  | jq -r .access_token
 ```
+
+> O app fica rodando em segundo plano (log em `/tmp/finance-app.log`). Para
+> pará-lo depois: `kill $(ss -ltnp 2>/dev/null | grep ':3003' | grep -oP 'pid=\K[0-9]+')`.
 
 ---
 
@@ -96,6 +124,24 @@ Cada endpoint traz **Entrada** (corpo a enviar) e **Saída esperada** (status +
 corpo), além de uma tabela de **erros possíveis**. Sempre os dois cenários de
 auth: **autenticado** (clique *Authorize* e cole o token) e **não autenticado**
 (sem token). Caminhos relativos ao context-path `/api/finance`.
+
+> **Antes de começar:** confirme que existe pendência em `GET /pendencies`. Se
+> vier vazio (`totalItems: 0`) — banco recém-resetado sem evento publicado — os
+> testes de comprovante darão `404`. Rode o **passo 4** (`publish_test_messages.py`)
+> para criar a pendência.
+
+**Ordem recomendada** (o estado do comprovante depende dos passos anteriores):
+
+1. `GET /health` — app no ar.
+2. `GET /pendencies` — confirma a pendência e pega o **id real** (ex.: `1`).
+3. `GET /pendencies/{id}` — detalhe da pendência (status `PENDING`).
+4. `POST /pendencies/{id}/proofs` — envia comprovante; nasce `WAITING_VALIDATION`.
+5. `GET /pendencies/{id}/proofs` — confirma o comprovante e pega o **proofId**.
+6. `DELETE /pendencies/{id}/proofs/{proofId}` — *(opcional)* remove enquanto está
+   `WAITING_VALIDATION`. Se remover, repita o passo 4 para ter um comprovante de novo.
+7. `PATCH /pendencies/{id}/proofs/{proofId}` — **deixe por último**: validar marca a
+   pendência como `PAID` e bloqueia novos `POST`. Para recomeçar, faça o reset
+   (bloco único acima).
 
 > **Sobre o `id` da pendência:** a pendência **não** nasce com o id do evento
 > (`pend_001`). O listener gera o id automaticamente — com o banco recém-resetado
