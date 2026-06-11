@@ -2,7 +2,7 @@ package com.facoffee.financeService.entities;
 
 public enum ProofStatus {
 
-    SUBMITTED,
+    WAITING_VALIDATION,
     VALIDATED,
     REJECTED
 
