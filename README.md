@@ -12,7 +12,8 @@ Este repositório implementa o serviço de finanças do FACOFFEE, que consiste e
 - Consultar pendência por identificador.
 - Registrar comprovantes de pagamento.
 - Validar ou rejeitar comprovantes.
-- Cadastrar e consultar despesas do domínio.
+- Cadastrar, listar, consultar e remover despesas do domínio.
+- Consultar extrato (statement) e balanço consolidado (balance).
 ### Endpoints sob responsabilidade
 Todos os endpoints do grupo Finance definidos em [api-docs.yaml](https://github.com/getHenrique/FACOFFEE-finace-service/blob/main/facofee-docs/api-docs.yaml).  
 Referências obrigatórias:
@@ -51,6 +52,49 @@ Referências obrigatórias:
 - Testes automatizados (unitários e integração).
 - README com instruções de execução local.
 - Evidências de cenários financeiros ponta a ponta.
+
+## Stack
+
+- **Spring Boot 4.0.6** + **Maven** (wrapper `./mvnw`), **Java 25**
+- **SQLite** (`src/main/resources/persistence/financePersistence.db`, `ddl-auto=update`)
+- **Keycloak** (JWT, realm `facoffee`, roles `MANAGER`/`PARTICIPANT`)
+- **RabbitMQ** (mensageria assíncrona)
+- Porta **3003**, context-path **`/api/finance`**
+
+## Estado atual da implementação
+
+Cobertura dos endpoints do grupo Finance (`api-docs.yaml`): **12/12** implementados
+e aderentes ao contrato.
+
+| Grupo | Endpoints | Status |
+|-------|-----------|--------|
+| Pendências | `GET /finance/pendencies`, `GET /finance/pendencies/{id}` | ✅ |
+| Comprovantes | `POST/GET/PATCH/DELETE /finance/pendencies/{id}/proofs[/{proofId}]` | ✅ |
+| Despesas | `POST/GET /finance/expenses`, `GET/DELETE /finance/expenses/{id}` | ✅ |
+| Relatórios | `GET /finance/statement`, `GET /finance/balance` | ✅ |
+
+> Relatórios: **entradas (INCOME)** = comprovantes `VALIDATED`; **saídas (EXPENSE)**
+> = despesas `REGISTERED`. `balance = totalIncome − totalExpense`.
+
+## Como executar localmente
+
+Pré-requisitos detalhados em [REQUISITOS.md](REQUISITOS.md). Em resumo: **JDK 25+**,
+**Docker + Docker Compose**, **Python 3** (script de eventos).
+
+```bash
+# 1. Infra (Keycloak :8080, RabbitMQ :5672)
+cd facoffee-docs && docker compose up -d rabbitmq keycloak && cd ..
+# 2. App (porta 3003)
+JAVA_HOME=<seu-jdk-25> ./mvnw spring-boot:run
+# 3. Dados de teste (pendência via evento) + Swagger
+python3 facoffee-docs/scripts/publish_test_messages.py
+# Swagger: http://localhost:3003/api/finance/swagger-ui.html
+```
+
+Guias completos:
+- **[RUNBOOK.md](RUNBOOK.md)** — passo a passo (Linux/macOS), reset, casos de teste por endpoint.
+- **[RUNBOOK_WINDOWS.md](RUNBOOK_WINDOWS.md)** — mesmo guia para Windows (PowerShell).
+- **[REQUISITOS.md](REQUISITOS.md)** — configurações da máquina para rodar corretamente.
 
 ## Contribuindo neste repositório:
 #### Este repositório organiza suas branches por GitHub Flow.

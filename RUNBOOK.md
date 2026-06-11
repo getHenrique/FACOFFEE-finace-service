@@ -18,7 +18,7 @@ Docker (Keycloak :8080, RabbitMQ :5672)  ->  precisam estar UP antes do app
 
 Pré-requisitos: Docker + Docker Compose, um JDK 25+ e Python 3 (para o script de
 eventos). Defina `JAVA_HOME` para o seu JDK — neste ambiente é
-`/home/gabriel/.jdks/openjdk-26`.
+`/home/gabriel/.jdks/jdk-25.0.3+9`.
 
 ---
 
@@ -48,7 +48,7 @@ rm -f src/main/resources/persistence/financePersistence.db
 ### 3. Subir o serviço
 ```bash
 chmod +x mvnw     # uma vez — o bit de execução às vezes se perde
-JAVA_HOME=/home/gabriel/.jdks/openjdk-26 ./mvnw spring-boot:run
+JAVA_HOME=/home/gabriel/.jdks/jdk-25.0.3+9 ./mvnw spring-boot:run
 ```
 Espere `Started FinanceServiceApplication` e verifique:
 ```bash
@@ -120,7 +120,7 @@ rm -f src/main/resources/persistence/financePersistence.db
 chmod +x mvnw
 
 # (3) sobe o app em segundo plano e espera o health virar 200
-JAVA_HOME=/home/gabriel/.jdks/openjdk-26 ./mvnw spring-boot:run > /tmp/finance-app.log 2>&1 &
+JAVA_HOME=/home/gabriel/.jdks/jdk-25.0.3+9 ./mvnw spring-boot:run > /tmp/finance-app.log 2>&1 &
 until [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3003/api/finance/health)" = "200" ]; do sleep 2; done
 echo "app UP"
 
@@ -148,9 +148,10 @@ auth: **autenticado** (clique *Authorize* e cole o token) e **não autenticado**
 (sem token). Caminhos relativos ao context-path `/api/finance`.
 
 > **Antes de começar:** confirme que existe pendência em `GET /pendencies`. Se
-> vier vazio (`totalItems: 0`) — banco recém-resetado sem evento publicado — os
+> vier vazio (`totalElements: 0`) — banco recém-resetado sem evento publicado — os
 > testes de comprovante darão `404`. Rode o **passo 4** (`publish_test_messages.py`)
-> para criar a pendência.
+> para criar a pendência. (Despesas e relatórios **não** dependem da pendência —
+> podem ser testados a qualquer momento com o token MANAGER.)
 
 **Ordem recomendada** (o estado do comprovante depende dos passos anteriores):
 
@@ -311,6 +312,104 @@ Só remove enquanto estiver em `WAITING_VALIDATION`.
 | PARTICIPANT que **não** é o dono | `403` `ErrorResponse` |
 | Pendência ou comprovante inexistente | `404` `ErrorResponse` |
 | Comprovante já decidido (`VALIDATED`/`REJECTED`) | `409` `ErrorResponse` |
+
+### 8. `POST /expenses`  · **só MANAGER**  (cadastrar despesa)
+
+- **Entrada:**
+  ```json
+  {
+    "description": "Compra de café em grãos",
+    "category": "COFFEE",
+    "amount": 85.90,
+    "expenseDate": "2026-06-01",
+    "registeredBy": "facoffee@facom.ufms.br",
+    "receiptUrl": "https://exemplo.com/notas/cafe.pdf"
+  }
+  ```
+  `category` ∈ `COFFEE, TEA, COOKIES, SUGAR, CUPS, MACHINE_MAINTENANCE, CLEANING_SUPPLIES, OTHER`.
+  `receiptUrl` é opcional.
+- **Saída esperada (token MANAGER):** `201 Created`
+  ```json
+  { "id": "1", "description": "Compra de café em grãos", "category": "COFFEE",
+    "amount": 85.90, "expenseDate": "2026-06-01", "cycle": "2026-06",
+    "status": "REGISTERED", "registeredBy": "facoffee@facom.ufms.br" }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Token **PARTICIPANT** | `403` `ErrorResponse` |
+| Falta `category` / `registeredBy` / `description` / `amount` / `expenseDate` | `400` `ErrorResponse` |
+| `amount` ≤ 0 | `400` `ErrorResponse` |
+
+### 9. `GET /expenses`  · autenticado  (listar despesas)
+
+- **Entrada:** nenhuma. Filtros opcionais: `?cycle=2026-06`, `?category=COFFEE`, `page`, `size`.
+- **Saída esperada (autenticado):** `200 OK` — paginada (`totalElements`), ordenada por data desc:
+  ```json
+  {
+    "items": [ { "id": "1", "category": "COFFEE", "amount": 85.90, "status": "REGISTERED" } ],
+    "page": { "page": 0, "size": 20, "totalElements": 1, "totalPages": 1 }
+  }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Filtro sem resultado | `200`, `items: []`, `totalElements: 0` |
+
+### 10. `GET /expenses/{expenseId}` e `DELETE /expenses/{expenseId}`
+
+- **`GET`** (autenticado) → `200` com a despesa, ou **`404`** `ErrorResponse` se o id não existir.
+- **`DELETE`** (**só MANAGER**) → `204 No Content`.
+
+| Cenário | Saída |
+|---------|-------|
+| `GET` id inexistente | `404` `ErrorResponse` |
+| `DELETE` sem token | `401` (sem corpo) |
+| `DELETE` como PARTICIPANT | `403` `ErrorResponse` |
+| `DELETE` id inexistente | `404` `ErrorResponse` |
+
+### 11. `GET /statement`  · **só MANAGER**  (extrato do período)
+
+Entradas (`INCOME`) = comprovantes **VALIDATED**; saídas (`EXPENSE`) = despesas **REGISTERED**.
+
+- **Entrada:** query `startDate` e `endDate` (ISO, **obrigatórias**). Ex.:
+  `GET /statement?startDate=2026-06-01&endDate=2026-06-30`
+- **Saída esperada (MANAGER):** `200 OK`
+  ```json
+  {
+    "period": { "startDate": "2026-06-01", "endDate": "2026-06-30" },
+    "totalIncome": 40.0,
+    "totalExpense": 85.90,
+    "balance": -45.90,
+    "entries": [
+      { "id": "1", "type": "INCOME",  "amount": 40.0,  "occurredAt": "...", "referenceType": "PAYMENT_PROOF" },
+      { "id": "1", "type": "EXPENSE", "amount": 85.90, "occurredAt": "...", "referenceType": "EXPENSE" }
+    ]
+  }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Token PARTICIPANT | `403` `ErrorResponse` |
+| Sem `startDate`/`endDate` | `400` |
+| `endDate` antes de `startDate` | `400` `ErrorResponse` |
+| Período sem movimento | `200`, `entries: []`, totais `0` |
+
+### 12. `GET /balance`  · **só MANAGER**  (balanço consolidado)
+
+- **Entrada:** nenhuma.
+- **Saída esperada (MANAGER):** `200 OK` — totais de toda a história:
+  ```json
+  { "totalIncome": 40.0, "totalExpense": 85.90, "balance": -45.90, "updatedAt": "..." }
+  ```
+
+| Cenário | Saída |
+|---------|-------|
+| Sem token | `401` (sem corpo) |
+| Token PARTICIPANT | `403` `ErrorResponse` |
 
 ---
 
