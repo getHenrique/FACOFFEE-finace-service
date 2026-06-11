@@ -55,7 +55,7 @@ public class PendenciasController {
                 "page", Map.of(
                         "page", safePage,
                         "size", safeSize,
-                        "totalItems", totalItems,
+                        "totalElements", totalItems,
                         "totalPages", totalPages
                 )
         ));
