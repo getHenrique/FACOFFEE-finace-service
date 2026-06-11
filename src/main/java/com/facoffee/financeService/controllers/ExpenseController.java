@@ -9,10 +9,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/finance")
@@ -26,5 +25,30 @@ public class ExpenseController {
         Expense expense = expenseService.createExpense(request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(new ExpenseResponse(expense));
+    }
+
+    @GetMapping("/expenses")
+    @RolesAllowed("MANAGER")
+    public ResponseEntity<List<ExpenseResponse>> listExpenses() {
+        List<Expense> expenses = expenseService.listAllExpenses();
+        List<ExpenseResponse> response = expenses.stream().map(ExpenseResponse::new).toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/expenses/{expenseId}")
+    @RolesAllowed("MANAGER")
+    public ResponseEntity<ExpenseResponse> getExpenseById(@PathVariable String expenseId) {
+        Expense expense = expenseService.findExpenseById(expenseId);
+
+        return ResponseEntity.ok(new ExpenseResponse(expense));
+    }
+
+    @DeleteMapping("/expenses/{expenseId}")
+    @RolesAllowed("MANAGER")
+    public ResponseEntity<Void> deleteExpense(@PathVariable String expenseId) {
+        expenseService.deleteExpense(expenseId);
+
+        return ResponseEntity.noContent().build();
     }
 }
