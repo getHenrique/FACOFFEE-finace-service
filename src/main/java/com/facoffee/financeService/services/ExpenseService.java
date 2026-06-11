@@ -38,5 +38,7 @@ public class ExpenseService {
         Expense expense = expenseRepository.findById(id).orElseThrow(
                 () -> new RuntimeException("Despesa não encontrada com o ID fornecido")
         );
+
+        expenseRepository.delete(expense);
     }
 }
