@@ -43,4 +43,12 @@ public class ExpenseController {
 
         return ResponseEntity.ok(new ExpenseResponse(expense));
     }
+
+    @DeleteMapping("/expenses/{expenseId}")
+    @RolesAllowed("MANAGER")
+    public ResponseEntity<Void> deleteExpense(@PathVariable String expenseId) {
+        expenseService.deleteExpense(expenseId);
+
+        return ResponseEntity.noContent().build();
+    }
 }

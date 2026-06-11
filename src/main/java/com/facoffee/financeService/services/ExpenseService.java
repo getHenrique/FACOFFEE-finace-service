@@ -33,4 +33,10 @@ public class ExpenseService {
                 () -> new RuntimeException("Despesa não encontrada com o ID fornecido")
         );
     }
+
+    public void deleteExpense(String id) {
+        Expense expense = expenseRepository.findById(id).orElseThrow(
+                () -> new RuntimeException("Despesa não encontrada com o ID fornecido")
+        );
+    }
 }
